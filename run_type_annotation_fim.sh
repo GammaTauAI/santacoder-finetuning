@@ -30,5 +30,5 @@ python -m torch.distributed.launch \
         --bf16 \
         --hub_model_id="gammatau/santacoder-ts-fim" \
         # --checkpoint "chk/last-checkpoint" \
-        --push_to_hub True \
+        --push_to_hub \
 
