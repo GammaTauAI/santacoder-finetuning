@@ -1,7 +1,20 @@
+from pathlib import Path
+from tree_sitter import Language, Parser, Node
 import functools
+import random
 
 import numpy as np
+from numpy.random import RandomState
 
+from typing import List, Tuple, Any, Optional
+
+Language.build_library(
+    f"{Path(__file__).parent}/build/languages.so",
+    [f"{Path(__file__).parent}/tree-sitter-typescript/typescript"]
+)
+TS_LANGUAGE = Language(f"{Path(__file__).parent}/build/languages.so", 'typescript')
+PARSER = Parser()
+PARSER.set_language(TS_LANGUAGE)
 
 # this is expensive so we cache it
 @functools.lru_cache(maxsize=None)
@@ -17,18 +30,120 @@ def get_fim_token_ids(tokenizer):
         suffix_tok_id, prefix_tok_id, middle_tok_id, pad_tok_id = None, None, None, None
     return suffix_tok_id, prefix_tok_id, middle_tok_id, pad_tok_id
 
+def build(content):
+    def create_query(query):
+        return TS_LANGUAGE.query(query)
+    def str_to_tree(contents):
+        return PARSER.parse(bytes(contents, "utf-8"))
+    def is_child_type_annotation(node):
+        """Checks if any of the parent nodes is an annotation node."""
+        node = node.parent
+        while node is not None:
+            if node.type == "type_annotation" or node.type == "opting_type_annotation" or node.type == "omitting_type_annotation":
+                return True
+            node = node.parent
+        return False
+
+    QUERY = create_query("""
+[
+  (type_annotation) @annotation
+  (opting_type_annotation) @annotation
+  (omitting_type_annotation) @annotation
+]
+""")
+    tree = str_to_tree(content)
+
+    # Each capture has a start_byte and end_byte; these are the indices of the
+    # type annotation. We want to invert these indices, i.e. get the substrings
+    # between the captures (and also the substring before the first capture and
+    # the substring after the last capture).
+    captures: List[Node] = QUERY.captures(tree.root_node)
+
+    # Need to operate on byte string, not characters
+    content_bytes = content.encode("utf-8")
+
+    # Flatten the capture indices into a list (but skip over child type
+    # annotations). But we also want to prepend 0 and append the last index of
+    # content, so we can re-pair the indices,
+    # e.g. [(s1, e1), (s2, e2)]
+    #   -> [0, s1, e1, s2, e2, n]
+    #   -> [(0, s1), (e1, s2), (e2, n)]
+    indices = [0] + [i
+                     for c in captures
+                     for i in [c[0].start_byte, c[0].end_byte]
+                     if not is_child_type_annotation(c[0])]
+    indices.append(len(content_bytes))
+
+    # We zip the list with itself (offset by 1), moving by 2 elements each time.
+    chunks = []
+    for s, e in zip(indices[::2], indices[1::2]):
+        chunks.append(content_bytes[s:e].decode("utf-8"))
+    new_content = "".join(chunks)
+
+    return new_content
+
+def get_prefix_middle_suffix(np_rng: RandomState, sample: str) -> Optional[Tuple[Tuple[str, str, str], RandomState]]:
+    def create_query(query):
+        return TS_LANGUAGE.query(query)
+    def str_to_tree(contents):
+        return PARSER.parse(bytes(contents, "utf-8"))
+    def is_child_type_annotation(node):
+        """Checks if any of the parent nodes is an annotation node."""
+        node = node.parent
+        while node is not None:
+            if node.type == "type_annotation" or node.type == "opting_type_annotation" or node.type == "omitting_type_annotation":
+                return True
+            node = node.parent
+        return False
+
+    QUERY = create_query("""
+[
+  (type_annotation) @annotation
+  (opting_type_annotation) @annotation
+  (omitting_type_annotation) @annotation
+]
+""")
+    tree = str_to_tree(sample)
+
+    # Each capture has a start_byte and end_byte; these are the indices of the
+    # type annotation. We want to invert these indices, i.e. get the substrings
+    # between the captures (and also the substring before the first capture and
+    # the substring after the last capture).
+    captures: List[Node] = QUERY.captures(tree.root_node)
+
+    captures_no_child: List[int] = []
+    for i, (node, _) in enumerate(captures):
+        if not is_child_type_annotation(node):
+            captures_no_child += [i]
+
+    if len(captures_no_child) == 0:
+        return None
+    random_pick_i = np_rng.choice(captures_no_child)
+
+    prefix_str: str = sample[:captures[random_pick_i][0].start_byte]
+    middle_str: str = sample[captures[random_pick_i][0].start_byte:captures[random_pick_i][0].end_byte]
+    if middle_str.startswith(": "):
+        prefix_str += ": "
+        middle_str = middle_str[2:]
+    suffix_str: str = ""
+    l = len(captures)
+    for i in range(random_pick_i, l - 1):
+        suffix_str += sample[captures[i][0].end_byte:captures[i + 1][0].start_byte]
+    suffix_str += sample[captures[l - 1][0].end_byte:]
+
+    return (prefix_str, middle_str, suffix_str), np_rng
+
 
 ## Adapted from https://github.com/bigcode-project/Megatron-LM/blob/6c4bf908df8fd86b4977f54bf5b8bd4b521003d1/megatron/data/gpt_dataset.py
 def permute(
+    tokenizer,
     sample,
     np_rng,
     suffix_tok_id,
     prefix_tok_id,
     middle_tok_id,
-    pad_tok_id,
     fim_rate=0.5,
     fim_spm_rate=0.5,
-    truncate_or_pad=False,
 ):
     """
     Take in a sample (list of tokens) and perform a FIM transformation on it with a probability of fim_rate, using two FIM modes:
@@ -39,19 +154,16 @@ def permute(
         boundaries = list(np_rng.randint(low=0, high=len(sample) + 1, size=2))
         boundaries.sort()
 
-        prefix = np.array(sample[: boundaries[0]], dtype=np.int64)
-        middle = np.array(sample[boundaries[0] : boundaries[1]], dtype=np.int64)
-        suffix = np.array(sample[boundaries[1] :], dtype=np.int64)
-
-        if truncate_or_pad:
-            new_length = suffix.shape[0] + prefix.shape[0] + middle.shape[0] + 3
-            diff = new_length - len(sample)
-            if diff > 0:
-                if suffix.shape[0] <= diff:
-                    return sample, np_rng
-                suffix = suffix[: suffix.shape[0] - diff]
-            elif diff < 0:
-                suffix = np.concatenate([suffix, np.full((-1 * diff), pad_tok_id)])
+        # prefix = np.array(sample[: boundaries[0]], dtype=np.int64)
+        # middle = np.array(sample[boundaries[0] : boundaries[1]], dtype=np.int64)
+        # suffix = np.array(sample[boundaries[1] :], dtype=np.int64)
+        res = get_prefix_middle_suffix(np_rng, tokenizer.decode(sample))
+        if res is None:
+            return None, np_rng
+        (prefix_str, middle_str, suffix_str), np_rng = res
+        prefix = np.array(tokenizer.encode(prefix_str))
+        middle = np.array(tokenizer.encode(middle_str))
+        suffix = np.array(tokenizer.encode(suffix_str))
 
         if np_rng.binomial(1, fim_spm_rate):
             # SPM (variant 2 from FIM paper)

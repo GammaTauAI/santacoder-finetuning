@@ -2,9 +2,9 @@
 python -m torch.distributed.launch \
         --nproc_per_node 3 train.py \
         --model_path="bigcode/santacoder" \
-        --dataset_name="bigcode/the-stack-dedup" \
+        --dataset_name="nuprl/ts-training" \
         --output_dir="./chk2" \
-        --subset="data/typescript" \
+        --subset="data" \
         --data_column "content" \
         --split="train" \
         --seq_length 2048 \
@@ -22,4 +22,3 @@ python -m torch.distributed.launch \
         --num_workers="20" \
         --no_fp16 \
         --bf16
-

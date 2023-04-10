@@ -7,9 +7,8 @@ import os
 
 import numpy as np
 import torch
-from datasets import load_dataset
+from datasets.load import load_dataset
 from torch.utils.data import IterableDataset
-from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
@@ -27,7 +26,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="bigcode/santacoder")
     parser.add_argument("--dataset_name", type=str,
-                        default="bigcode/the-stack-dedup")
+                        default="bigcode/santacoder")
     parser.add_argument("--subset", type=str, default="data")
     parser.add_argument("--split", type=str, default="train")
     parser.add_argument("--size_valid_set", type=int, default=4000)
@@ -153,18 +152,17 @@ class ConstantLengthDataset(IterableDataset):
                 # optionally do FIM permutations
                 if self.fim_rate > 0:
                     tokenized_input, np_rng = fim.permute(
+                        self.tokenizer,
                         tokenized_input,
                         np_rng,
                         self.suffix_tok_id,
                         self.prefix_tok_id,
                         self.middle_tok_id,
-                        self.pad_tok_id,
                         fim_rate=self.fim_rate,
                         fim_spm_rate=self.fim_spm_rate,
-                        truncate_or_pad=False,
                     )
-
-                all_token_ids.extend(tokenized_input + [self.concat_token_id])
+                if not tokenized_input is None:
+                    all_token_ids.extend(tokenized_input + [self.concat_token_id])
             for i in range(0, len(all_token_ids), self.seq_length):
                 input_ids = all_token_ids[i: i + self.seq_length]
                 if len(input_ids) == self.seq_length:
@@ -263,7 +261,7 @@ def run_training(args, train_data, val_data):
         bf16=args.bf16,
         weight_decay=args.weight_decay,
         run_name=f"santacoder-{args.subset}",
-        report_to="wandb",
+        report_to=["wandb"],
     )
 
     trainer = Trainer(
