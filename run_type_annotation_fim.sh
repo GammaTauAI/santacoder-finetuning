@@ -9,7 +9,7 @@ python -m torch.distributed.launch \
         --nproc_per_node $1 train.py \
         --model_path="bigcode/santacoder" \
         --dataset_name="nuprl/ts-training" \
-        --output_dir="./chk2" \
+        --output_dir="./chk" \
         --subset="data" \
         --data_column "content" \
         --split="train" \
