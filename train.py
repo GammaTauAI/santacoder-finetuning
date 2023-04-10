@@ -62,9 +62,8 @@ def get_args():
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_strategy", type=str, default="checkpoint")
     parser.add_argument("--save_strategy", type=str, default="steps")
-    parser.add_argument("--save_strategy", type=str, default="steps")
     parser.add_argument("--save_total_limit", type=int, default=10)
-    parser.add_argument("--push_to_hub", type=bool, default=False)
+    parser.add_argument("--push_to_hub", action="store_true", default=False)
 
 
 
