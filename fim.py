@@ -89,7 +89,7 @@ def build(content):
     return new_content
 
 
-def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tuple[Tuple[bytes, bytes, bytes], RandomState]]:
+def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tuple[Tuple[str, str, str], RandomState]]:
     def is_child_type_annotation(node):
         """Checks if any of the parent nodes is an annotation node."""
         node = node.parent
@@ -123,18 +123,22 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tup
         return None
     random_pick_i = np_rng.choice(captures_no_child)
 
-    prefix_str: bytes = sample[:captures[random_pick_i][0].start_byte]
-    middle_str: bytes = sample[captures[random_pick_i]
-                               [0].start_byte:captures[random_pick_i][0].end_byte]
-    if middle_str.startswith(b": "):
-        prefix_str += b": "
-        middle_str = middle_str[2:]
-    suffix_str: bytes = b""
+    prefix_b: bytes = sample[:captures[random_pick_i][0].start_byte]
+    middle_b: bytes = sample[captures[random_pick_i]
+                             [0].start_byte:captures[random_pick_i][0].end_byte]
+    if middle_b.startswith(b": "):
+        prefix_b += b": "
+        middle_b = middle_b[2:]
+    suffix_b: bytes = b""
     l = len(captures)
     for i in range(random_pick_i, l - 1):
-        suffix_str += sample[captures[i]
-                             [0].end_byte:captures[i + 1][0].start_byte]
-    suffix_str += sample[captures[l - 1][0].end_byte:]
+        suffix_b += sample[captures[i]
+                           [0].end_byte:captures[i + 1][0].start_byte]
+    suffix_b += sample[captures[l - 1][0].end_byte:]
+
+    prefix_str = prefix_b.decode("utf-8")
+    middle_str = middle_b.decode("utf-8")
+    suffix_str = suffix_b.decode("utf-8")
 
     return (prefix_str, middle_str, suffix_str), np_rng
 
@@ -156,8 +160,9 @@ def permute(
     """
 
     if np_rng.binomial(1, fim_rate):
-        decoded_bytes: bytes = tokenizer.decode(sample)
-        assert isinstance(decoded_bytes, bytes)  # just making sure
+        decoded_bytes: str | bytes = tokenizer.decode(sample)
+        if not isinstance(decoded_bytes, bytes):
+            decoded_bytes = decoded_bytes.encode("utf-8")
 
         res = get_prefix_middle_suffix(np_rng, decoded_bytes)
         if res is None:
