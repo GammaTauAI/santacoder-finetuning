@@ -26,7 +26,8 @@ import fim
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="bigcode/santacoder")
-    parser.add_argument("--dataset_name", type=str, default="bigcode/the-stack-dedup")
+    parser.add_argument("--dataset_name", type=str,
+                        default="bigcode/the-stack-dedup")
     parser.add_argument("--subset", type=str, default="data")
     parser.add_argument("--split", type=str, default="train")
     parser.add_argument("--size_valid_set", type=int, default=4000)
@@ -45,7 +46,7 @@ def get_args():
     parser.add_argument("--num_warmup_steps", type=int, default=100)
     parser.add_argument("--weight_decay", type=float, default=0.05)
 
-    parser.add_argument("--local_rank", type=int, default=0)
+    parser.add_argument("--local-rank", type=int, default=0)
     parser.add_argument("--no_fp16", action="store_false")
     parser.add_argument("--bf16", action="store_true")
     parser.add_argument("--no_gradient_checkpointing", action="store_false")
@@ -58,6 +59,7 @@ def get_args():
 
     parser.add_argument("--fim_rate", type=float, default=0)
     parser.add_argument("--fim_spm_rate", type=float, default=0)
+    parser.add_argument("--checkpoint", type=str, default=None)
     return parser.parse_args()
 
 
@@ -142,7 +144,8 @@ class ConstantLengthDataset(IterableDataset):
                     else:
                         more_examples = False
                         break
-            tokenized_inputs = self.tokenizer(buffer, truncation=False)["input_ids"]
+            tokenized_inputs = self.tokenizer(
+                buffer, truncation=False)["input_ids"]
             all_token_ids = []
 
             np_rng = np.random.RandomState(seed=self.seed)
@@ -163,7 +166,7 @@ class ConstantLengthDataset(IterableDataset):
 
                 all_token_ids.extend(tokenized_input + [self.concat_token_id])
             for i in range(0, len(all_token_ids), self.seq_length):
-                input_ids = all_token_ids[i : i + self.seq_length]
+                input_ids = all_token_ids[i: i + self.seq_length]
                 if len(input_ids) == self.seq_length:
                     self.current_size += 1
                     yield {
@@ -185,7 +188,8 @@ def create_datasets(tokenizer, args):
         print("Loading the dataset in streaming mode")
         valid_data = dataset.take(args.size_valid_set)
         train_data = dataset.skip(args.size_valid_set)
-        train_data = train_data.shuffle(buffer_size=args.shuffle_buffer, seed=args.seed)
+        train_data = train_data.shuffle(
+            buffer_size=args.shuffle_buffer, seed=args.seed)
     else:
         dataset = dataset.train_test_split(test_size=0.005, seed=args.seed)
         train_data = dataset["train"]
@@ -193,8 +197,10 @@ def create_datasets(tokenizer, args):
         print(
             f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}"
         )
-    chars_per_token = chars_token_ratio(train_data, tokenizer, args.data_column)
-    print(f"The character to token ratio of the dataset is: {chars_per_token:.2f}")
+    chars_per_token = chars_token_ratio(
+        train_data, tokenizer, args.data_column)
+    print(
+        f"The character to token ratio of the dataset is: {chars_per_token:.2f}")
     train_dataset = ConstantLengthDataset(
         tokenizer,
         train_data,
@@ -248,6 +254,11 @@ def run_training(args, train_data, val_data):
         warmup_steps=args.num_warmup_steps,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         gradient_checkpointing=args.no_gradient_checkpointing,
+        hub_strategy='checkpoint',
+        save_total_limit=10,
+        hub_model_id='gammatau/santacoder-ts-fim',
+        save_strategy='steps',
+        push_to_hub=True,
         fp16=args.no_fp16,
         bf16=args.bf16,
         weight_decay=args.weight_decay,
@@ -260,14 +271,19 @@ def run_training(args, train_data, val_data):
     )
 
     print("Training...")
-    trainer.train()
+    if args.checkpoint:
+        print(f"Loading checkpoint from {args.checkpoint}")
+        trainer.train(args.checkpoint)
+    else:
+        trainer.train()
 
     print("Saving last checkpoint of the model")
     model.save_pretrained(os.path.join(args.output_dir, "final_checkpoint/"))
 
 
 def main(args):
-    tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_auth_token=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_path, use_auth_token=True)
 
     train_dataset, eval_dataset = create_datasets(tokenizer, args)
 
