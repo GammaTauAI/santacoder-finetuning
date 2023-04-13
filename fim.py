@@ -164,7 +164,13 @@ def permute(
         if not isinstance(decoded_bytes, bytes):
             decoded_bytes = decoded_bytes.encode("utf-8")
 
-        res = get_prefix_middle_suffix(np_rng, decoded_bytes)
+        try:
+            res = get_prefix_middle_suffix(np_rng, decoded_bytes)
+        except Exception as e:
+            print(e)
+            print("GOT FAILED SAMPLE:\n", decoded_bytes)
+            return None, np_rng
+
         if res is None:
             return None, np_rng
 
