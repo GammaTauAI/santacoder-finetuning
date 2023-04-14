@@ -7,6 +7,8 @@ Furthermore, we remove all the type annotations from the suffix of the FIM in or
 the same scenario in training as we have in inference ([Santacoder Inference Server](https://github.com/GammaTauAI/sanatacoder-server)),
 as we are filling type-holes left to right.
 
+We are currently fine-tuning a model, which can be found [here](https://huggingface.co/gammatau/santacoder-ts-fim).
+
 ## Original README from the SantaCoder-Finetuning repo
 
 Fine-tune [SantaCoder](https://huggingface.co/bigcode/santacoder) on Code and Text Generation datasets. For example on new programming languages from [The Stack](https://huggingface.co/datasets/bigcode/the-stack) dataset, or on a code-to-text dataset like [GitHub-Jupyter](https://huggingface.co/datasets/codeparrot/github-jupyter-code-to-text). SantaCoder is a 1B parameters model pre-trained on Python, Java & JavaScript, we suggest fine-tuning on programming languages close to them, otherwise, the model might not converge well.
