@@ -1,4 +1,5 @@
 from pathlib import Path
+import signal
 from tree_sitter import Language, Parser, Node
 import functools
 import random
@@ -34,61 +35,6 @@ def get_fim_token_ids(tokenizer):
     return suffix_tok_id, prefix_tok_id, middle_tok_id, pad_tok_id
 
 
-def build(content):
-    def create_query(query):
-        return TS_LANGUAGE.query(query)
-
-    def str_to_tree(contents):
-        return PARSER.parse(bytes(contents, "utf-8"))
-
-    def is_child_type_annotation(node):
-        """Checks if any of the parent nodes is an annotation node."""
-        node = node.parent
-        while node is not None:
-            if node.type == "type_annotation" or node.type == "opting_type_annotation" or node.type == "omitting_type_annotation":
-                return True
-            node = node.parent
-        return False
-
-    QUERY = create_query("""
-[
-  (type_annotation) @annotation
-  (opting_type_annotation) @annotation
-  (omitting_type_annotation) @annotation
-]
-""")
-    tree = str_to_tree(content)
-
-    # Each capture has a start_byte and end_byte; these are the indices of the
-    # type annotation. We want to invert these indices, i.e. get the substrings
-    # between the captures (and also the substring before the first capture and
-    # the substring after the last capture).
-    captures: List[Node] = QUERY.captures(tree.root_node)
-
-    # Need to operate on byte string, not characters
-    content_bytes = content.encode("utf-8")
-
-    # Flatten the capture indices into a list (but skip over child type
-    # annotations). But we also want to prepend 0 and append the last index of
-    # content, so we can re-pair the indices,
-    # e.g. [(s1, e1), (s2, e2)]
-    #   -> [0, s1, e1, s2, e2, n]
-    #   -> [(0, s1), (e1, s2), (e2, n)]
-    indices = [0] + [i
-                     for c in captures
-                     for i in [c[0].start_byte, c[0].end_byte]
-                     if not is_child_type_annotation(c[0])]
-    indices.append(len(content_bytes))
-
-    # We zip the list with itself (offset by 1), moving by 2 elements each time.
-    chunks = []
-    for s, e in zip(indices[::2], indices[1::2]):
-        chunks.append(content_bytes[s:e].decode("utf-8"))
-    new_content = "".join(chunks)
-
-    return new_content
-
-
 def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tuple[Tuple[str, str, str], RandomState]]:
     def is_child_type_annotation(node):
         """Checks if any of the parent nodes is an annotation node."""
@@ -117,29 +63,43 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tup
     # type annotation. We want to invert these indices, i.e. get the substrings
     # between the captures (and also the substring before the first capture and
     # the substring after the last capture).
-    captures: List[Node] = QUERY.captures(tree.root_node)
+    captures: List[Tuple[Node, str]] = QUERY.captures(tree.root_node)
 
-    captures_no_child: List[int] = []
+    def is_splitable(node):
+        return not is_child_type_annotation(node) and not contains_url(node)
+
+    def is_capturable(node):
+        return not is_child_type_annotation(node) and not contains_url(node)
+
+    captures_no_child: List[Node] = []
+
     for i, (node, _) in enumerate(captures):
-        if not is_child_type_annotation(node) and not contains_url(node):
-            captures_no_child += [i]
+        if is_capturable(node):
+            captures_no_child += [node]
 
-    if len(captures_no_child) == 0:
+    splittable_indices: List[int] = []
+
+    for i, node in enumerate(captures_no_child):
+        if is_splitable(node):
+            splittable_indices += [i]
+
+    if len(splittable_indices) == 0:
         return None
-    random_pick_i = np_rng.choice(captures_no_child)
+    random_pick_i = np_rng.choice(splittable_indices)
 
-    prefix_b: bytes = sample[:captures[random_pick_i][0].start_byte]
-    middle_b: bytes = sample[captures[random_pick_i]
-                             [0].start_byte:captures[random_pick_i][0].end_byte]
+    prefix_b: bytes = sample[:captures_no_child[random_pick_i].start_byte]
+    middle_b: bytes = sample[captures_no_child[random_pick_i]
+                             .start_byte:captures_no_child[random_pick_i].end_byte]
+
     if middle_b.startswith(b":"):
         prefix_b += b": "
         middle_b = middle_b[1:].lstrip()
     suffix_b: bytes = b""
-    l = len(captures)
+    l = len(captures_no_child)
     for i in range(random_pick_i, l - 1):
-        suffix_b += sample[captures[i]
-                           [0].end_byte:captures[i + 1][0].start_byte]
-    suffix_b += sample[captures[l - 1][0].end_byte:]
+        suffix_b += sample[captures_no_child[i]
+                           .end_byte:captures_no_child[i + 1].start_byte]
+    suffix_b += sample[captures_no_child[l - 1].end_byte:]
 
     prefix_str = prefix_b.decode("utf-8")
     middle_str = middle_b.decode("utf-8")
@@ -170,7 +130,13 @@ def permute(
             decoded_bytes = decoded_bytes.encode("utf-8")
 
         try:
+            def timeout_handler(_, __):
+                raise Exception("Timeout")
+            # set a timeout of 10 seconds, using signal.alarm
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(10)
             res = get_prefix_middle_suffix(np_rng, decoded_bytes)
+            signal.alarm(0)
         except Exception as e:
             print(e)
             print("GOT FAILED SAMPLE:\n", decoded_bytes)
@@ -221,21 +187,16 @@ if __name__ == "__main__":  # some unit tests
     import os
     rng = np.random.RandomState(seed=int(os.urandom(4).hex(), 16))
     sample = """
-    export interface IChartsTest{
-
-        labels: Array<String>,
-        datasets: [
-          {
-            label: String,
-            data: Array<number>
-          }
-        ]
-,
-            data
-          }
-        ]
-
-}
+    interface Foo {
+        foo(x: number, y: number): number;
+        name: {
+            first: string;
+            last: {
+                name: string;
+                age: number;
+            };
+        };
+    }
 
     function foo(x: number, y:number):number {
         return x + y;
@@ -247,6 +208,15 @@ if __name__ == "__main__":  # some unit tests
     function foo2(x:number, y: number): number {
         return x + y;
     }
+
+    interface Bar {
+        bar(x: number, y: number): number;
+        name: {
+            first: string;
+            last: string;
+        };
+    }
+                
 
     function url() {
         let url = `https://127.0.0.1:${SUBSTRATE_PORT}`
