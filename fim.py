@@ -99,6 +99,11 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tup
             node = node.parent
         return False
 
+    def contains_url(node):
+        # check if it contains a url, should not contain a //
+        string = sample[node.start_byte:node.end_byte].decode("utf-8")
+        return "//" in string
+
     QUERY = TS_LANGUAGE.query("""
 [
   (type_annotation) @annotation
@@ -116,7 +121,7 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tup
 
     captures_no_child: List[int] = []
     for i, (node, _) in enumerate(captures):
-        if not is_child_type_annotation(node):
+        if not is_child_type_annotation(node) and not contains_url(node):
             captures_no_child += [i]
 
     if len(captures_no_child) == 0:
@@ -126,9 +131,9 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tup
     prefix_b: bytes = sample[:captures[random_pick_i][0].start_byte]
     middle_b: bytes = sample[captures[random_pick_i]
                              [0].start_byte:captures[random_pick_i][0].end_byte]
-    if middle_b.startswith(b": "):
+    if middle_b.startswith(b":"):
         prefix_b += b": "
-        middle_b = middle_b[2:]
+        middle_b = middle_b[1:].lstrip()
     suffix_b: bytes = b""
     l = len(captures)
     for i in range(random_pick_i, l - 1):
@@ -172,9 +177,11 @@ def permute(
             return None, np_rng
 
         if res is None:
+            print("No type annotations found in sample")
             return None, np_rng
 
         (prefix_str, middle_str, suffix_str), np_rng = res
+        print(f"Was able to split on type: \"{middle_str}\"")
 
         prefix = np.array(tokenizer.encode(prefix_str))
         middle = np.array(tokenizer.encode(middle_str))
@@ -214,15 +221,35 @@ if __name__ == "__main__":  # some unit tests
     import os
     rng = np.random.RandomState(seed=int(os.urandom(4).hex(), 16))
     sample = """
-    function foo(x: number, y: number): number {
+    export interface IChartsTest{
+
+        labels: Array<String>,
+        datasets: [
+          {
+            label: String,
+            data: Array<number>
+          }
+        ]
+,
+            data
+          }
+        ]
+
+}
+
+    function foo(x: number, y:number):number {
         return x + y;
     }
 
     // some unicode to mess things up
     // 😀 😃 😄 😁 😆 😅
 
-    function foo2(x: number, y: number): number {
+    function foo2(x:number, y: number): number {
         return x + y;
+    }
+
+    function url() {
+        let url = `https://127.0.0.1:${SUBSTRATE_PORT}`
     }
     """
     bytes_sample = bytes(sample, "utf-8")
@@ -233,6 +260,6 @@ if __name__ == "__main__":  # some unit tests
     res = get_prefix_middle_suffix(rng, bytes_sample)
     if res is not None:
         (prefix_str, middle_str, suffix_str), rng = res
-        print("prefix_str:", prefix_str.decode("utf-8"))
-        print("middle_str:", middle_str.decode("utf-8"))
-        print("suffix_str:", suffix_str.decode("utf-8"))
+        print("prefix_str:", prefix_str)
+        print("middle_str:", middle_str)
+        print("suffix_str:", suffix_str)
