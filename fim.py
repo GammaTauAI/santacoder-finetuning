@@ -35,7 +35,7 @@ def get_fim_token_ids(tokenizer):
     return suffix_tok_id, prefix_tok_id, middle_tok_id, pad_tok_id
 
 
-def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tuple[Tuple[str, str, str], RandomState]]:
+def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes, strip_suffix_rate: float) -> Optional[Tuple[Tuple[str, str, str], RandomState]]:
     def is_child_type_annotation(node):
         """Checks if any of the parent nodes is an annotation node."""
         node = node.parent
@@ -95,11 +95,16 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes) -> Optional[Tup
         prefix_b += b": "
         middle_b = middle_b[1:].lstrip()
     suffix_b: bytes = b""
-    l = len(captures_no_child)
-    for i in range(random_pick_i, l - 1):
-        suffix_b += sample[captures_no_child[i]
-                           .end_byte:captures_no_child[i + 1].start_byte]
-    suffix_b += sample[captures_no_child[l - 1].end_byte:]
+
+    # if we strip the types to the suffix:
+    if np_rng.binomial(1, strip_suffix_rate):
+        l = len(captures_no_child)
+        for i in range(random_pick_i, l - 1):
+            suffix_b += sample[captures_no_child[i]
+                               .end_byte:captures_no_child[i + 1].start_byte]
+        suffix_b += sample[captures_no_child[l - 1].end_byte:]
+    else: # keep the types in the suffix
+        suffix_b = sample[captures_no_child[random_pick_i].end_byte:]
 
     prefix_str = prefix_b.decode("utf-8")
     middle_str = middle_b.decode("utf-8")
@@ -118,6 +123,7 @@ def permute(
     middle_tok_id,
     fim_rate=0.5,
     fim_spm_rate=0.5,
+    strip_suffix_rate=0.9,
 ):
     """
     Take in a sample (list of tokens) and perform a FIM transformation on it with a probability of fim_rate, using two FIM modes:
@@ -135,7 +141,7 @@ def permute(
             # set a timeout of 10 seconds, using signal.alarm
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(10)
-            res = get_prefix_middle_suffix(np_rng, decoded_bytes)
+            res = get_prefix_middle_suffix(np_rng, decoded_bytes, strip_suffix_rate)
             signal.alarm(0)
         except Exception as e:
             print(e)
@@ -227,7 +233,7 @@ if __name__ == "__main__":  # some unit tests
     print("bytes_sample:", bytes_sample)
 
     print("get_prefix_middle_suffix:")
-    res = get_prefix_middle_suffix(rng, bytes_sample)
+    res = get_prefix_middle_suffix(rng, bytes_sample, 0.5)
     if res is not None:
         (prefix_str, middle_str, suffix_str), rng = res
         print("prefix_str:", prefix_str)
