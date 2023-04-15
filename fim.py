@@ -3,6 +3,7 @@ import signal
 from tree_sitter import Language, Parser, Node
 import functools
 import random
+import hashlib
 
 import numpy as np
 from numpy.random import RandomState
@@ -137,10 +138,16 @@ def permute(
 
         try:
             def timeout_handler(_, __):
-                raise Exception("Timeout")
+                decoded = decoded_bytes.decode("utf-8")
+                h = hashlib.sha1(
+                    f"blob {len(decoded.encode())}\0{decoded}".encode()).hexdigest()
+                raise Exception(f"Timeout after 10 seconds: {h}")
 
             def crash_in_cpp_handler(_, __):
-                raise Exception("Crash in C/C++")
+                decoded = decoded_bytes.decode("utf-8")
+                h = hashlib.sha1(
+                    f"blob {len(decoded.encode())}\0{decoded}".encode()).hexdigest()
+                raise Exception(f"Crash in C++: {h}")
 
             # set a timeout of 10 seconds, using signal.alarm
             signal.signal(signal.SIGALRM, timeout_handler)
