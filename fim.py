@@ -103,7 +103,7 @@ def get_prefix_middle_suffix(np_rng: RandomState, sample: bytes, strip_suffix_ra
             suffix_b += sample[captures_no_child[i]
                                .end_byte:captures_no_child[i + 1].start_byte]
         suffix_b += sample[captures_no_child[l - 1].end_byte:]
-    else: # keep the types in the suffix
+    else:  # keep the types in the suffix
         suffix_b = sample[captures_no_child[random_pick_i].end_byte:]
 
     prefix_str = prefix_b.decode("utf-8")
@@ -138,11 +138,22 @@ def permute(
         try:
             def timeout_handler(_, __):
                 raise Exception("Timeout")
+
+            def crash_in_cpp_handler(_, __):
+                raise Exception("Crash in C/C++")
+
             # set a timeout of 10 seconds, using signal.alarm
             signal.signal(signal.SIGALRM, timeout_handler)
+
+            # oh boy oh boy
+            signal.signal(signal.SIGSEGV, crash_in_cpp_handler)
+            signal.signal(signal.SIGABRT, crash_in_cpp_handler)
+
             signal.alarm(10)
-            res = get_prefix_middle_suffix(np_rng, decoded_bytes, strip_suffix_rate)
+            res = get_prefix_middle_suffix(
+                np_rng, decoded_bytes, strip_suffix_rate)
             signal.alarm(0)
+
         except Exception as e:
             print(e)
             print("GOT FAILED SAMPLE:\n", decoded_bytes)
