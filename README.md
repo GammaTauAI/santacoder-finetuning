@@ -10,6 +10,9 @@ This approach is named Fill-In-The-Type (FIT) and will be described in a paper s
 
 We are currently fine-tuning a model, which can be found [here](https://huggingface.co/gammatau/santacoder-ts-fim).
 
+The model is trained on the [TS Training](https://huggingface.co/datasets/nuprl/ts-training) dataset,
+which is a subset of The Stack dataset, containing only TypeScript code.
+
 ## Original README from the SantaCoder-Finetuning repo
 
 Fine-tune [SantaCoder](https://huggingface.co/bigcode/santacoder) on Code and Text Generation datasets. For example on new programming languages from [The Stack](https://huggingface.co/datasets/bigcode/the-stack) dataset, or on a code-to-text dataset like [GitHub-Jupyter](https://huggingface.co/datasets/codeparrot/github-jupyter-code-to-text). SantaCoder is a 1B parameters model pre-trained on Python, Java & JavaScript, we suggest fine-tuning on programming languages close to them, otherwise, the model might not converge well.
