@@ -6,7 +6,7 @@ We do this using tree-sitter to parse the code and to extract the type annotatio
 Furthermore, we remove all the type annotations from the suffix of the FIM in order to simulate
 the same scenario in training as we have in inference ([Santacoder Inference Server](https://github.com/GammaTauAI/sanatacoder-server)),
 as we are filling type-holes left to right.
-This approach is named Fill-In-The-Type (FIT) and will be described in a paper soon.
+This approach is named Fill-In-The-Type (FIT) and will be described in [our paper](https://arxiv.org/abs/2305.17145).
 
 We are currently fine-tuning a model, which can be found [here](https://huggingface.co/gammatau/santacoder-ts-fim).
 
@@ -23,7 +23,6 @@ pip install -r requirements.txt
 
 Before starting the fine-tuning process, the `run_type_annotation_fim.sh` script needs
 to be configured to point to the correct data and model paths.
-_We will release the full dataset when we can de-anonymize. We provide instructions for generating the training dataset, see the `../datasets` directory._
 
 Then, the fine-tuning can be started by utilizing the `run_type_annotation_fim.sh` script:
 
