@@ -13,7 +13,36 @@ We are currently fine-tuning a model, which can be found [here](https://huggingf
 The model is trained on the [TS Training](https://huggingface.co/datasets/nuprl/ts-training) dataset,
 which is a subset of The Stack dataset, containing only TypeScript code.
 
-## Original README from the SantaCoder-Finetuning repo
+### Usage
+
+To start fine-tuning, dependencies need to be installed first:
+
+```bash
+pip install -r requirements.txt
+```
+
+Before starting the fine-tuning process, the `run_type_annotation_fim.sh` script needs
+to be configured to point to the correct data and model paths.
+_We will release the full dataset when we can de-anonymize. We provide instructions for generating the training dataset, see the `../datasets` directory._
+
+Then, the fine-tuning can be started by utilizing the `run_type_annotation_fim.sh` script:
+
+```bash
+./run_type_annotation_fim.sh <num_gpus> <batch_size> <num_workers>
+```
+
+For example, to start fine-tuning on 4 GPUs with a batch size of 32 and 64 cpu workers, run:
+
+```bash
+./run_type_annotation_fim.sh 4 32 64
+```
+
+#### Fine-tuning for the SantaCoder-TS Model
+
+To fine-tune for the SantaCoder-TS model used for ablation, utilize the `./run_simple.sh` instead,
+following the same steps as above.
+
+# Original README from the SantaCoder-Finetuning repo
 
 Fine-tune [SantaCoder](https://huggingface.co/bigcode/santacoder) on Code and Text Generation datasets. For example on new programming languages from [The Stack](https://huggingface.co/datasets/bigcode/the-stack) dataset, or on a code-to-text dataset like [GitHub-Jupyter](https://huggingface.co/datasets/codeparrot/github-jupyter-code-to-text). SantaCoder is a 1B parameters model pre-trained on Python, Java & JavaScript, we suggest fine-tuning on programming languages close to them, otherwise, the model might not converge well.
 
